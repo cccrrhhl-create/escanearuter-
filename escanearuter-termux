@@ -1,0 +1,344 @@
+#!/bin/bash
+
+# =============================================
+# ESCANEARUTER v3.0 - Versión Termux PURO
+# Sin necesidad de Ubuntu/proot-distro
+# =============================================
+
+VERDE='\033[0;32m'
+AMARILLO='\033[1;33m'
+ROJO='\033[0;31m'
+AZUL='\033[0;34m'
+MAGENTA='\033[0;35m'
+CYAN='\033[0;36m'
+BLANCO='\033[1;37m'
+NC='\033[0m'
+
+ROUTER="192.168.1.1"
+MI_IP=""
+
+mostrar_banner() {
+    clear
+    echo -e "${CYAN}"
+    echo "╔════════════════════════════════════════════════════╗"
+    echo "║              ESCANEARUTER v3.0                     ║"
+    echo "║              Versión Termux Puro                   ║"
+    echo "║       Detección avanzada de dispositivos           ║"
+    echo "╚════════════════════════════════════════════════════╝"
+    echo -e "${NC}"
+}
+
+obtener_ip_local() {
+    MI_IP=$(ip -4 addr show 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v "127.0.0.1" | head -1)
+
+    if [ -z "$MI_IP" ]; then
+        MI_IP=$(ifconfig 2>/dev/null | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1' | head -1)
+    fi
+
+    if [ -z "$MI_IP" ]; then
+        echo -e "${AMARILLO}[!] No se pudo detectar IP automáticamente${NC}"
+        echo -n "Introduce tu IP local (ej: 192.168.1.10): "
+        read MI_IP
+    fi
+
+    echo -e "${VERDE}[+] IP Local: $MI_IP${NC}"
+}
+
+ping_test() {
+    echo -e "\n${AZUL}[*] Probando conectividad con el router...${NC}"
+    if ping -c 4 $ROUTER > /dev/null 2>&1; then
+        ping -c 4 $ROUTER | grep -E "bytes from|packet loss|rtt"
+        echo -e "${VERDE}[+] Conexión establecida correctamente${NC}"
+    else
+        echo -e "${ROJO}[!] No se pudo conectar con el router${NC}"
+    fi
+}
+
+escanear_puertos() {
+    echo -e "\n${AZUL}[*] Escaneando puertos en $ROUTER...${NC}"
+    echo -e "${CYAN}────────────────────────────────────────${NC}"
+
+    PUERTOS=(21 22 23 53 80 443 8080 8443 8000 8081)
+    ABIERTOS=0
+
+    for port in "${PUERTOS[@]}"; do
+        timeout 1 bash -c "echo >/dev/tcp/$ROUTER/$port" 2>/dev/null
+        if [ $? -eq 0 ]; then
+            echo -e "${VERDE}[+] Puerto $port: ABIERTO${NC}"
+            ABIERTOS=$((ABIERTOS+1))
+            case $port in
+                21)   echo "     └─ FTP" ;;
+                22)   echo "     └─ SSH" ;;
+                23)   echo "     └─ ${ROJO}TELNET (inseguro)${NC}" ;;
+                53)   echo "     └─ DNS" ;;
+                80)   echo "     └─ HTTP" ;;
+                443)  echo "     └─ HTTPS" ;;
+                8080) echo "     └─ HTTP alternativo" ;;
+                8443) echo "     └─ HTTPS alternativo" ;;
+                8000) echo "     └─ Aplicaciones" ;;
+                8081) echo "     └─ HTTP alternativo" ;;
+            esac
+        fi
+    done
+
+    [ $ABIERTOS -eq 0 ] && echo -e "${AMARILLO}[-] No se encontraron puertos abiertos${NC}" || echo -e "\n${VERDE}[+] Total: $ABIERTOS puertos abiertos${NC}"
+}
+
+identificar_por_puertos() {
+    local ip=$1
+    local puertos_abiertos=()
+    local puertos_check=(22 23 80 443 445 548 554 515 631 8080 8443 1883 5000 9100 7547 3389 5900 62078)
+
+    for port in "${puertos_check[@]}"; do
+        timeout 0.5 bash -c "echo >/dev/tcp/$ip/$port" 2>/dev/null
+        [ $? -eq 0 ] && puertos_abiertos+=($port)
+    done
+
+    local tipo=""
+
+    if [[ " ${puertos_abiertos[@]} " =~ " 80 " ]] && [[ " ${puertos_abiertos[@]} " =~ " 443 " ]] && [[ " ${puertos_abiertos[@]} " =~ " 53 " ]]; then
+        tipo="🌐 Router / Gateway"
+    elif [[ " ${puertos_abiertos[@]} " =~ " 7547 " ]]; then
+        tipo="🌐 Router (TR-069)"
+    elif [[ " ${puertos_abiertos[@]} " =~ " 554 " ]]; then
+        tipo="📷 Cámara IP (RTSP)"
+    elif [[ " ${puertos_abiertos[@]} " =~ " 9100 " ]] || [[ " ${puertos_abiertos[@]} " =~ " 515 " ]] || [[ " ${puertos_abiertos[@]} " =~ " 631 " ]]; then
+        tipo="🖨️  Impresora"
+    elif [[ " ${puertos_abiertos[@]} " =~ " 5000 " ]]; then
+        tipo="📺 Smart TV / Chromecast"
+    elif [[ " ${puertos_abiertos[@]} " =~ " 445 " ]] && [[ " ${puertos_abiertos[@]} " =~ " 3389 " ]]; then
+        tipo="💻 PC Windows (RDP)"
+    elif [[ " ${puertos_abiertos[@]} " =~ " 445 " ]]; then
+        tipo="💻 PC Windows"
+    elif [[ " ${puertos_abiertos[@]} " =~ " 3389 " ]]; then
+        tipo="💻 PC Windows (RDP)"
+    elif [[ " ${puertos_abiertos[@]} " =~ " 22 " ]] && [[ " ${puertos_abiertos[@]} " =~ " 80 " ]]; then
+        tipo="🐧 Servidor Linux"
+    elif [[ " ${puertos_abiertos[@]} " =~ " 22 " ]]; then
+        tipo="🐧 Linux / Mac (SSH)"
+    elif [[ " ${puertos_abiertos[@]} " =~ " 1883 " ]]; then
+        tipo="🏠 IoT (MQTT)"
+    elif [[ " ${puertos_abiertos[@]} " =~ " 5900 " ]]; then
+        tipo="🖥️  VNC"
+    elif [[ " ${puertos_abiertos[@]} " =~ " 62078 " ]]; then
+        tipo="🍎 iPhone / iPad"
+    elif [[ " ${puertos_abiertos[@]} " =~ " 80 " ]] || [[ " ${puertos_abiertos[@]} " =~ " 443 " ]]; then
+        tipo="🌐 Dispositivo con web"
+    elif [ ${#puertos_abiertos[@]} -eq 0 ]; then
+        local ttl=$(ping -c 1 -W 1 $ip 2>/dev/null | grep -oP 'ttl=\K[0-9]+')
+        if [ ! -z "$ttl" ]; then
+            if [ $ttl -le 64 ];    then tipo="📱 Smartphone / Tablet"
+            elif [ $ttl -le 128 ]; then tipo="💻 PC / Laptop"
+            else tipo="📡 Dispositivo de red"
+            fi
+        else
+            tipo="❓ Desconocido"
+        fi
+    fi
+
+    local puertos_str=""
+    [ ${#puertos_abiertos[@]} -gt 0 ] && puertos_str=" [puertos: ${puertos_abiertos[*]}]"
+
+    echo "$tipo$puertos_str"
+}
+
+ver_dispositivos() {
+    echo -e "\n${AZUL}[*] BUSCANDO DISPOSITIVOS EN LA RED${NC}"
+    echo -e "${CYAN}════════════════════════════════════════════════════════${NC}"
+
+    RED=$(echo $ROUTER | cut -d'.' -f1-3)
+    RESULTADOS="/data/data/com.termux/files/usr/tmp/dispositivos_$$.txt"
+
+    echo -e "${VERDE}[*] Escaneando $RED.0/24...${NC}\n"
+    echo -e "${CYAN}📡 Fase 1: Descubriendo hosts...${NC}"
+
+    for i in {1..254}; do
+        (
+            ping -c 1 -W 1 $RED.$i > /dev/null 2>&1
+            [ $? -eq 0 ] && echo "$RED.$i" >> $RESULTADOS
+        ) &
+        [ $(jobs -p | wc -l) -ge 30 ] && wait -n
+    done
+    wait
+
+    echo -e "${CYAN}🔍 Fase 2: Identificando dispositivos...${NC}\n"
+
+    if [ -f $RESULTADOS ] && [ -s $RESULTADOS ]; then
+        sort -t'.' -k4 -n -o $RESULTADOS $RESULTADOS
+        echo -e "${VERDE}📱 DISPOSITIVOS ENCONTRADOS:${NC}"
+        echo -e "${CYAN}────────────────────────────────────────${NC}"
+
+        CONTADOR=0
+        while read ip; do
+            [ -z "$ip" ] && continue
+            CONTADOR=$((CONTADOR+1))
+            info=$(identificar_por_puertos $ip)
+
+            if [ "$ip" = "$ROUTER" ]; then
+                echo -e "${VERDE}[$CONTADOR] $ip${NC} ${AMARILLO}(ROUTER)${NC}"
+            elif [ "$ip" = "$MI_IP" ]; then
+                echo -e "${AZUL}[$CONTADOR] $ip${NC} ${CYAN}(ESTE DISPOSITIVO)${NC}"
+            else
+                echo -e "${BLANCO}[$CONTADOR] $ip${NC}"
+            fi
+            echo "   └─ $info"
+            echo ""
+        done < $RESULTADOS
+
+        TOTAL=$(wc -l < $RESULTADOS)
+        echo -e "${VERDE}[+] Total: $TOTAL dispositivos${NC}"
+    else
+        echo -e "${ROJO}[-] No se encontraron dispositivos${NC}"
+    fi
+
+    rm -f $RESULTADOS 2>/dev/null
+}
+
+estadisticas_red() {
+    echo -e "\n${AZUL}[*] Estadísticas de conexión...${NC}"
+    echo -e "${CYAN}────────────────────────────────────────${NC}"
+
+    PING_RESULT=$(ping -c 10 -q $ROUTER 2>/dev/null)
+    RTT=$(echo "$PING_RESULT" | grep "rtt" | cut -d'=' -f2)
+    LOSS=$(echo "$PING_RESULT" | grep "packet loss" | grep -oP '[0-9]+%')
+
+    if [ ! -z "$RTT" ]; then
+        MIN=$(echo $RTT | cut -d'/' -f1)
+        AVG=$(echo $RTT | cut -d'/' -f2)
+        MAX=$(echo $RTT | cut -d'/' -f3)
+        echo -e "${VERDE}[+] Latencia:${NC}"
+        echo "   ├─ Mínima: ${MIN}ms"
+        echo "   ├─ Media:  ${AVG}ms"
+        echo "   └─ Máxima: ${MAX}ms"
+        echo -e "${VERDE}[+] Pérdida: $LOSS${NC}"
+        AVG_NUM=$(echo $AVG | cut -d'.' -f1)
+        if [ $AVG_NUM -lt 10 ];   then echo -e "\n${VERDE}[+] Calidad: EXCELENTE 🚀${NC}"
+        elif [ $AVG_NUM -lt 30 ]; then echo -e "\n${VERDE}[+] Calidad: BUENA ✓${NC}"
+        elif [ $AVG_NUM -lt 60 ]; then echo -e "\n${AMARILLO}[+] Calidad: ACEPTABLE ⚠${NC}"
+        else echo -e "\n${ROJO}[+] Calidad: MALA ✗${NC}"
+        fi
+    else
+        echo -e "${ROJO}[-] No se pudieron obtener estadísticas${NC}"
+    fi
+}
+
+recomendaciones_inteligentes() {
+    echo -e "\n${MAGENTA}════════════════════════════════════════════════════════${NC}"
+    echo -e "${MAGENTA}🔒 RECOMENDACIONES${NC}"
+    echo -e "${MAGENTA}════════════════════════════════════════════════════════${NC}"
+
+    RIESGOS=0
+
+    timeout 1 bash -c "echo >/dev/tcp/$ROUTER/23" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        echo -e "${ROJO}[!] CRÍTICO: Telnet (puerto 23) ABIERTO${NC}"
+        echo "     └═ Deshabilítalo inmediatamente"
+        RIESGOS=$((RIESGOS+1))
+    fi
+
+    timeout 1 bash -c "echo >/dev/tcp/$ROUTER/21" 2>/dev/null
+    if [ $? -eq 0 ]; then
+        echo -e "${AMARILLO}[!] MEDIO: FTP (puerto 21) ABIERTO${NC}"
+        echo "     └═ Usa SFTP en su lugar"
+        RIESGOS=$((RIESGOS+1))
+    fi
+
+    timeout 1 bash -c "echo >/dev/tcp/$ROUTER/80" 2>/dev/null; HTTP=$?
+    timeout 1 bash -c "echo >/dev/tcp/$ROUTER/443" 2>/dev/null; HTTPS=$?
+
+    if [ $HTTP -eq 0 ] && [ $HTTPS -ne 0 ]; then
+        echo -e "${AMARILLO}[!] Solo HTTP (sin cifrar)${NC}"
+        RIESGOS=$((RIESGOS+1))
+    fi
+
+    if [ $RIESGOS -eq 0 ]; then
+        echo -e "${VERDE}✅ Sin riesgos detectados${NC}"
+    else
+        echo -e "\n${AMARILLO}⚠ $RIESGOS puntos de mejora${NC}"
+        echo -e "\n${CYAN}Consejos:${NC}"
+        echo "   • Actualiza el firmware"
+        echo "   • Cambia la contraseña por defecto"
+        echo "   • Usa WPA2/WPA3"
+    fi
+    echo -e "${MAGENTA}════════════════════════════════════════════════════════${NC}"
+}
+
+exportar_resultados() {
+    FECHA=$(date +"%Y%m%d_%H%M%S")
+    ARCHIVO="escaneo_$FECHA.txt"
+    {
+        echo "ESCANEO DE ROUTER - $(date)"
+        echo "Router: $ROUTER | IP: $MI_IP"
+        echo "--- PUERTOS ---"
+        for port in 21 22 23 53 80 443 8080 8443; do
+            timeout 1 bash -c "echo >/dev/tcp/$ROUTER/$port" 2>/dev/null
+            [ $? -eq 0 ] && echo "Puerto $port: ABIERTO"
+        done
+        echo "--- STATS ---"
+        ping -c 5 $ROUTER 2>&1 | grep -E "packet loss|rtt"
+    } > $ARCHIVO
+    echo -e "${VERDE}[+] Guardado en: $ARCHIVO${NC}"
+}
+
+cambiar_ip() {
+    echo -n "Nueva IP del router: "
+    read nueva_ip
+    if [[ $nueva_ip =~ ^[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}$ ]]; then
+        ROUTER=$nueva_ip
+        echo -e "${VERDE}[+] Router: $ROUTER${NC}"
+    else
+        echo -e "${ROJO}[!] IP inválida${NC}"
+    fi
+}
+
+# =============================================
+# PROGRAMA PRINCIPAL
+# =============================================
+
+mostrar_banner
+obtener_ip_local
+
+echo -e "\n${AZUL}[*] Verificando conectividad...${NC}"
+if ping -c 1 -W 2 $ROUTER >/dev/null 2>&1; then
+    echo -e "${VERDE}[+] Conectividad OK con $ROUTER${NC}"
+else
+    echo -e "${ROJO}[!] No se puede alcanzar $ROUTER${NC}"
+    echo -n "¿Cambiar IP? (s/n): "
+    read cambiar
+    [ "$cambiar" = "s" ] || [ "$cambiar" = "S" ] && cambiar_ip
+fi
+
+while true; do
+    echo -e "\n${CYAN}════════════════════════════════════════════════════════${NC}"
+    echo -e "${AMARILLO}   📡 MENÚ - Router: ${VERDE}$ROUTER${NC}"
+    echo -e "${CYAN}════════════════════════════════════════════════════════${NC}"
+    echo -e "1)  📶 Ping test"
+    echo -e "2)  🔌 Escanear puertos"
+    echo -e "3)  📊 Estadísticas"
+    echo -e "4)  📱 Buscar dispositivos"
+    echo -e "5)  🔒 Recomendaciones"
+    echo -e "6)  💾 Exportar resultados"
+    echo -e "7)  ⚙️  Cambiar IP"
+    echo -e "8)  🚪 Salir"
+    echo -e "${CYAN}────────────────────────────────────────────────────────${NC}"
+    echo -n -e "${VERDE}Opción [1-8]: ${NC}"
+    read opcion
+
+    case $opcion in
+        1) ping_test ;;
+        2) escanear_puertos ;;
+        3) estadisticas_red ;;
+        4) ver_dispositivos ;;
+        5) recomendaciones_inteligentes ;;
+        6) exportar_resultados ;;
+        7) cambiar_ip ;;
+        8) echo -e "\n${VERDE}¡Hasta luego!${NC}"; break ;;
+        *) echo -e "${ROJO}Opción no válida${NC}" ;;
+    esac
+
+    echo -e "\n${AMARILLO}Presiona ENTER...${NC}"
+    read
+    mostrar_banner
+    echo -e "${VERDE}[+] Router: $ROUTER | IP: $MI_IP${NC}"
+done
+
