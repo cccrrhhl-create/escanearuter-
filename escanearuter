@@ -5,7 +5,6 @@
 # Adaptado para funcionar sin permisos root
 # =============================================
 
-# Colores para mejor visualización
 VERDE='\033[0;32m'
 AMARILLO='\033[1;33m'
 ROJO='\033[0;31m'
@@ -13,13 +12,11 @@ AZUL='\033[0;34m'
 MAGENTA='\033[0;35m'
 CYAN='\033[0;36m'
 BLANCO='\033[1;37m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# Configuración
 ROUTER="192.168.1.1"
 MI_IP=""
 
-# Función para mostrar banner
 mostrar_banner() {
     clear
     echo -e "${CYAN}"
@@ -31,7 +28,6 @@ mostrar_banner() {
     echo -e "${NC}"
 }
 
-# Función para obtener IP local en Termux
 obtener_ip_local_termux() {
     if command -v ip &> /dev/null; then
         MI_IP=$(ip -4 addr show 2>/dev/null | grep -oP '(?<=inet\s)\d+(\.\d+){3}' | grep -v "127.0.0.1" | head -1)
@@ -51,7 +47,6 @@ obtener_ip_local_termux() {
     echo -e "${AMARILLO}[!] MAC no disponible (normal en Termux sin root)${NC}"
 }
 
-# Función para verificar conectividad
 ping_test() {
     echo -e "\n${AZUL}[*] Probando conectividad con el router...${NC}"
 
@@ -64,20 +59,18 @@ ping_test() {
     fi
 }
 
-# Función para escanear puertos del router
 escanear_puertos() {
     echo -e "\n${AZUL}[*] Escaneando puertos comunes en $ROUTER...${NC}"
     echo -e "${CYAN}────────────────────────────────────────${NC}"
 
     PUERTOS=(21 22 23 53 80 443 8080 8443 8000 8081)
-
     ABIERTOS=0
+
     for port in "${PUERTOS[@]}"; do
         timeout 1 bash -c "echo >/dev/tcp/$ROUTER/$port" 2>/dev/null
         if [ $? -eq 0 ]; then
             echo -e "${VERDE}[+] Puerto $port: ABIERTO${NC}"
             ABIERTOS=$((ABIERTOS+1))
-
             case $port in
                 21)   echo "     └─ Servicio: FTP" ;;
                 22)   echo "     └─ Servicio: SSH" ;;
@@ -100,14 +93,9 @@ escanear_puertos() {
     fi
 }
 
-# =============================================
-# IDENTIFICACIÓN DE DISPOSITIVOS POR PUERTOS
-# =============================================
 identificar_por_puertos() {
     local ip=$1
     local puertos_abiertos=()
-
-    # Puertos a escanear por dispositivo
     local puertos_check=(22 23 80 443 445 548 554 515 631 8080 8443 1883 5000 5001 9100 7547 8888 3389 5900 62078)
 
     for port in "${puertos_check[@]}"; do
@@ -115,123 +103,70 @@ identificar_por_puertos() {
         [ $? -eq 0 ] && puertos_abiertos+=($port)
     done
 
-    local tipo="Desconocido"
-    local icono="📱"
+    local tipo=""
 
-    # ── Router / Gateway ──────────────────────────────
     if [[ " ${puertos_abiertos[@]} " =~ " 80 " ]] && \
        [[ " ${puertos_abiertos[@]} " =~ " 443 " ]] && \
        [[ " ${puertos_abiertos[@]} " =~ " 53 " ]]; then
         tipo="🌐 Router / Gateway"
-        icono="🔷"
-
-    # ── Router sin DNS ────────────────────────────────
     elif [[ " ${puertos_abiertos[@]} " =~ " 7547 " ]]; then
         tipo="🌐 Router (TR-069)"
-        icono="🔷"
-
-    # ── NAS / Servidor ────────────────────────────────
     elif [[ " ${puertos_abiertos[@]} " =~ " 445 " ]] && \
          [[ " ${puertos_abiertos[@]} " =~ " 548 " ]]; then
         tipo="🗄️  NAS (Samba + AFP)"
-        icono="🖥️"
-
     elif [[ " ${puertos_abiertos[@]} " =~ " 445 " ]] && \
          [[ " ${puertos_abiertos[@]} " =~ " 80 " ]]; then
         tipo="🗄️  NAS / Servidor"
-        icono="🖥️"
-
-    # ── Cámara IP ─────────────────────────────────────
     elif [[ " ${puertos_abiertos[@]} " =~ " 554 " ]]; then
         tipo="📷 Cámara IP (RTSP)"
-        icono="📷"
-
     elif [[ " ${puertos_abiertos[@]} " =~ " 8080 " ]] && \
          [[ ${#puertos_abiertos[@]} -le 2 ]]; then
         tipo="📷 Posible Cámara IP"
-        icono="📷"
-
-    # ── Impresora ─────────────────────────────────────
     elif [[ " ${puertos_abiertos[@]} " =~ " 9100 " ]] || \
          [[ " ${puertos_abiertos[@]} " =~ " 515 " ]] || \
          [[ " ${puertos_abiertos[@]} " =~ " 631 " ]]; then
         tipo="🖨️  Impresora"
-        icono="🖨️"
-
-    # ── Smart TV / Chromecast ─────────────────────────
     elif [[ " ${puertos_abiertos[@]} " =~ " 8008 " ]] || \
          [[ " ${puertos_abiertos[@]} " =~ " 8009 " ]] || \
          [[ " ${puertos_abiertos[@]} " =~ " 5000 " ]]; then
         tipo="📺 Smart TV / Chromecast"
-        icono="📺"
-
-    # ── Windows PC ────────────────────────────────────
     elif [[ " ${puertos_abiertos[@]} " =~ " 445 " ]] && \
          [[ " ${puertos_abiertos[@]} " =~ " 3389 " ]]; then
         tipo="💻 PC Windows (RDP activo)"
-        icono="💻"
-
     elif [[ " ${puertos_abiertos[@]} " =~ " 445 " ]]; then
         tipo="💻 PC Windows"
-        icono="💻"
-
     elif [[ " ${puertos_abiertos[@]} " =~ " 3389 " ]]; then
         tipo="💻 PC Windows (RDP)"
-        icono="💻"
-
-    # ── Linux / Servidor ──────────────────────────────
     elif [[ " ${puertos_abiertos[@]} " =~ " 22 " ]] && \
          [[ " ${puertos_abiertos[@]} " =~ " 80 " ]]; then
         tipo="🐧 Servidor Linux (SSH+Web)"
-        icono="🖥️"
-
     elif [[ " ${puertos_abiertos[@]} " =~ " 22 " ]]; then
         tipo="🐧 Linux / Mac (SSH)"
-        icono="💻"
-
-    # ── IoT / MQTT ────────────────────────────────────
     elif [[ " ${puertos_abiertos[@]} " =~ " 1883 " ]]; then
         tipo="🏠 Dispositivo IoT (MQTT)"
-        icono="🏠"
-
-    # ── VNC (control remoto) ──────────────────────────
     elif [[ " ${puertos_abiertos[@]} " =~ " 5900 " ]]; then
         tipo="🖥️  Escritorio remoto (VNC)"
-        icono="🖥️"
-
-    # ── iPhone / iPad ─────────────────────────────────
     elif [[ " ${puertos_abiertos[@]} " =~ " 62078 " ]]; then
         tipo="🍎 iPhone / iPad"
-        icono="📱"
-
-    # ── Solo web ──────────────────────────────────────
     elif [[ " ${puertos_abiertos[@]} " =~ " 80 " ]] || \
          [[ " ${puertos_abiertos[@]} " =~ " 443 " ]]; then
         tipo="🌐 Dispositivo con web"
-        icono="📱"
-
-    # ── Sin puertos detectados ────────────────────────
     elif [ ${#puertos_abiertos[@]} -eq 0 ]; then
-        # Usar TTL como último recurso
         local ttl=$(ping -c 1 -W 1 $ip 2>/dev/null | grep -oP 'ttl=\K[0-9]+')
         if [ ! -z "$ttl" ]; then
-            if [ $ttl -le 64 ];   then tipo="📱 Smartphone / Tablet"
+            if [ $ttl -le 64 ];    then tipo="📱 Smartphone / Tablet"
             elif [ $ttl -le 128 ]; then tipo="💻 PC / Laptop"
             else tipo="📡 Dispositivo de red"
             fi
         fi
     fi
 
-    # Mostrar puertos abiertos encontrados
     local puertos_str=""
-    if [ ${#puertos_abiertos[@]} -gt 0 ]; then
-        puertos_str=" [puertos: ${puertos_abiertos[*]}]"
-    fi
+    [ ${#puertos_abiertos[@]} -gt 0 ] && puertos_str=" [puertos: ${puertos_abiertos[*]}]"
 
-    echo "$icono $tipo$puertos_str"
+    echo "$tipo$puertos_str"
 }
 
-# Función para obtener hostname
 obtener_hostname() {
     local ip=$1
     local hostname=""
@@ -246,7 +181,6 @@ obtener_hostname() {
     echo "$hostname"
 }
 
-# Función principal para ver dispositivos
 ver_dispositivos_termux() {
     echo -e "\n${AZUL}[*] BUSCANDO DISPOSITIVOS EN LA RED${NC}"
     echo -e "${CYAN}════════════════════════════════════════════════════════${NC}"
@@ -262,10 +196,7 @@ ver_dispositivos_termux() {
             ping -c 1 -W 1 $RED.$i > /dev/null 2>&1
             [ $? -eq 0 ] && echo "$RED.$i" >> $RESULTADOS
         ) &
-
-        if [ $(jobs -p | wc -l) -ge 30 ]; then
-            wait -n
-        fi
+        [ $(jobs -p | wc -l) -ge 30 ] && wait -n
     done
     wait
 
@@ -273,7 +204,6 @@ ver_dispositivos_termux() {
 
     if [ -f $RESULTADOS ] && [ -s $RESULTADOS ]; then
         sort -t'.' -k4 -n -o $RESULTADOS $RESULTADOS
-
         echo -e "${VERDE}📱 DISPOSITIVOS ENCONTRADOS:${NC}"
         echo -e "${CYAN}────────────────────────────────────────${NC}"
 
@@ -282,13 +212,9 @@ ver_dispositivos_termux() {
             [ -z "$ip" ] && continue
             CONTADOR=$((CONTADOR+1))
 
-            # Obtener hostname
             hostname=$(obtener_hostname $ip)
-
-            # Identificar por puertos
             info=$(identificar_por_puertos $ip)
 
-            # Mostrar resultado
             if [ "$ip" = "$ROUTER" ]; then
                 echo -e "${VERDE}[$CONTADOR] $ip${NC} ${AMARILLO}(ROUTER)${NC}"
             elif [ "$ip" = "$MI_IP" ]; then
@@ -300,7 +226,6 @@ ver_dispositivos_termux() {
             [ ! -z "$hostname" ] && echo "   ├─ Nombre: $hostname"
             echo "   └─ $info"
             echo ""
-
         done < $RESULTADOS
 
         TOTAL=$(wc -l < $RESULTADOS)
@@ -313,35 +238,6 @@ ver_dispositivos_termux() {
     rm -f $RESULTADOS 2>/dev/null
 }
 
-# Función para información del router
-info_router() {
-    echo -e "\n${AZUL}[*] Obteniendo información del router...${NC}"
-    echo -e "${CYAN}────────────────────────────────────────${NC}"
-
-    timeout 1 bash -c "echo >/dev/tcp/$ROUTER/80" 2>/dev/null
-    HTTP=$?
-    timeout 1 bash -c "echo >/dev/tcp/$ROUTER/443" 2>/dev/null
-    HTTPS=$?
-
-    if [ $HTTP -eq 0 ] || [ $HTTPS -eq 0 ]; then
-        PROTO="http"
-        [ $HTTPS -eq 0 ] && PROTO="https"
-        echo -e "${VERDE}[+] Interfaz web: $PROTO://$ROUTER${NC}"
-
-        if command -v curl &> /dev/null; then
-            TITULO=$(curl -s -L --connect-timeout 5 $PROTO://$ROUTER 2>/dev/null | grep -i "<title>" | sed 's/<[^>]*>//g' | head -1 | cut -c 1-50)
-            [ ! -z "$TITULO" ] && echo -e "   └─ Título: $TITULO"
-        fi
-    else
-        echo -e "${AMARILLO}[-] Interfaz web no accesible${NC}"
-    fi
-
-    echo -e "\n${CYAN}[*] Servicios detectados:${NC}"
-    timeout 1 bash -c "echo >/dev/tcp/$ROUTER/22" 2>/dev/null  && echo -e "   ${VERDE}✓ SSH disponible${NC}"              || echo -e "   ${AMARILLO}✗ SSH no disponible${NC}"
-    timeout 1 bash -c "echo >/dev/tcp/$ROUTER/23" 2>/dev/null  && echo -e "   ${ROJO}⚠ TELNET disponible (inseguro)${NC}" || echo -e "   ${VERDE}✓ TELNET no disponible (bien)${NC}"
-}
-
-# Función para estadísticas de red
 estadisticas_red() {
     echo -e "\n${AZUL}[*] Estadísticas de conexión...${NC}"
     echo -e "${CYAN}────────────────────────────────────────${NC}"
@@ -372,7 +268,6 @@ estadisticas_red() {
     fi
 }
 
-# Función para recomendaciones inteligentes
 recomendaciones_inteligentes() {
     echo -e "\n${MAGENTA}════════════════════════════════════════════════════════${NC}"
     echo -e "${MAGENTA}🔒 RECOMENDACIONES PERSONALIZADAS${NC}"
@@ -420,7 +315,6 @@ recomendaciones_inteligentes() {
     fi
 }
 
-# Función para exportar resultados
 exportar_resultados() {
     echo -e "\n${AZUL}[*] Exportando resultados...${NC}"
 
@@ -441,43 +335,27 @@ exportar_resultados() {
             timeout 1 bash -c "echo >/dev/tcp/$ROUTER/$port" 2>/dev/null
             [ $? -eq 0 ] && echo "Puerto $port: ABIERTO"
         done
-
         echo ""
         echo "--- ESTADÍSTICAS ---"
         ping -c 5 $ROUTER 2>&1 | grep -E "packet loss|rtt"
-
     } > $ARCHIVO
 
     echo -e "${VERDE}[+] Informe guardado en: $ARCHIVO${NC}"
 }
 
-# Función para escaneo completo
 escaneo_completo() {
     echo -e "\n${MAGENTA}╔════════════════════════════════════╗${NC}"
     echo -e "${MAGENTA}║   INICIANDO ESCANEO COMPLETO      ║${NC}"
     echo -e "${MAGENTA}╚════════════════════════════════════╝${NC}"
 
     ping_test
-    echo -e "\n${AMARILLO}Presiona ENTER...${NC}" && read
-
     escanear_puertos
-    echo -e "\n${AMARILLO}Presiona ENTER...${NC}" && read
-
-    info_router
-    echo -e "\n${AMARILLO}Presiona ENTER...${NC}" && read
-
     estadisticas_red
-    echo -e "\n${AMARILLO}Presiona ENTER...${NC}" && read
-
     ver_dispositivos_termux
-    echo -e "\n${AMARILLO}Presiona ENTER...${NC}" && read
-
     recomendaciones_inteligentes
 
     echo -e "\n${VERDE}[+] Escaneo completo finalizado${NC}"
 }
-
-# Función para cambiar IP
 cambiar_ip() {
     echo -e "\n${AZUL}[*] IP actual: $ROUTER${NC}"
     echo -n "Nueva IP del router: "
@@ -513,44 +391,41 @@ else
     fi
 fi
 
-# Menú principal
 while true; do
     echo -e "\n${CYAN}════════════════════════════════════════════════════════${NC}"
     echo -e "${AMARILLO}   📡 MENÚ PRINCIPAL - Router: ${VERDE}$ROUTER${NC}"
     echo -e "${CYAN}════════════════════════════════════════════════════════${NC}"
     echo -e "1)  📶 Ping test"
     echo -e "2)  🔌 Escanear puertos"
-    echo -e "3)  ℹ️  Información del router"
-    echo -e "4)  📊 Estadísticas de red"
-    echo -e "5)  📱 Buscar dispositivos"
-    echo -e "6)  🔒 Recomendaciones"
-    echo -e "7)  💾 Exportar resultados"
-    echo -e "8)  🔍 Escaneo completo"
-    echo -e "9)  ⚙️  Cambiar IP"
-    echo -e "10) 🚪 Salir"
+    echo -e "3)  📊 Estadísticas de red"
+    echo -e "4)  📱 Buscar dispositivos"
+    echo -e "5)  🔒 Recomendaciones"
+    echo -e "6)  💾 Exportar resultados"
+    echo -e "7)  🔍 Escaneo completo"
+    echo -e "8)  ⚙️  Cambiar IP"
+    echo -e "9)  🚪 Salir"
     echo -e "${CYAN}────────────────────────────────────────────────────────${NC}"
-    echo -n -e "${VERDE}Selecciona una opción [1-10]: ${NC}"
+    echo -n -e "${VERDE}Selecciona una opción [1-9]: ${NC}"
     read opcion
 
     case $opcion in
         1) ping_test ;;
         2) escanear_puertos ;;
-        3) info_router ;;
-        4) estadisticas_red ;;
-        5) ver_dispositivos_termux ;;
-        6) recomendaciones_inteligentes ;;
-        7) exportar_resultados ;;
-        8) escaneo_completo ;;
-        9) cambiar_ip ;;
-        10)
+        3) estadisticas_red ;;
+        4) ver_dispositivos_termux ;;
+        5) recomendaciones_inteligentes ;;
+        6) exportar_resultados ;;
+        7) escaneo_completo ;;
+        8) cambiar_ip ;;
+        9)
             echo -e "\n${VERDE}¡Hasta luego!${NC}"
             break
             ;;
-        *) echo -e "${ROJO}Opción no válida (1-10)${NC}" ;;
+        *) echo -e "${ROJO}Opción no válida (1-9)${NC}" ;;
     esac
 
     echo -e "\n${AMARILLO}Presiona ENTER para continuar...${NC}"
     read
     mostrar_banner
     echo -e "${VERDE}[+] Router: $ROUTER | IP Local: $MI_IP${NC}"
-done		
+done
